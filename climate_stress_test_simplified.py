@@ -296,4 +296,7 @@ xs0 = [min(1, initial_x) for i in range(DeltaT)]
 
 if __name__ == "__main__":
     fn = generate_objective_fn(c_greens_all, c_browns_all)
-    result = do_optimize(fn, xs0, DeltaT)
+    import timeit
+    N = 100
+    # print(timeit.timeit('fn(xs0)', number=N, globals=globals()) / N)
+    print(timeit.timeit('result = do_optimize(fn, xs0, DeltaT)', number=N, globals=globals()) / N)
