@@ -6,6 +6,7 @@ import Random
 import Statistics
 
 import Optim
+import LineSearches
 
 
 # For deterministic result
@@ -81,7 +82,9 @@ function do_optimize(fn, xs0, DeltaT)
     # inner_optimizer = Optim.ConjugateGradient  # 2 min 47 s
     # inner_optimizer = Optim.GradientDescent  # 2 min
     println(Symbol(inner_optimizer))
-    result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer()))
+    linesearch = LineSearches.HagerZhang(linesearchmax = 20)
+    result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer(linesearch = linesearch)), Optim.Options(g_tol = 1e-5, f_tol = 2.2e-9))
+    #result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer()), autodiff = :forward)
     println("elapsed: ", time() - tic)
     return result
 end
@@ -315,10 +318,11 @@ if abspath(PROGRAM_FILE) == @__FILE__
         firm = allocate_firm()
         fn = generate_objective_fn(c_greens_all, c_browns_all, firm)
         #@profilehtml fn(xs0)
-        #@profile fn(xs0)
+        #@btime fn(xs0)
         #Profile.print(format=:flat, sortedby=:count)
         @btime result = do_optimize(fn, xs0, DeltaT)
         #result = do_optimize(fn, xs0, DeltaT)
+        #println(result)
         #println(Optim.minimizer(result))
     #end
 end
