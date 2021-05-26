@@ -6,6 +6,7 @@ import Random
 import Statistics
 
 import Optim
+import SPGBox
 
 
 # For deterministic result
@@ -91,6 +92,11 @@ function do_optimize(fn, xs0, DeltaT, g!)
     #result = Optim.optimize(fn, g!, lower, upper, xs0, Optim.Fminbox(inner_optimizer(linesearch = linesearch)), options)
     # ConjugateGradient with same params as scipy.optimize, using g!
     #result = Optim.optimize(fn, g!, lower, upper, xs0, Optim.Fminbox(Optim.ConjugateGradient(linesearch = linesearch)), options)
+
+    # Using SPGBox
+    spg_g!(x, g) = g!(g, x)
+    result = SPGBox.spgbox!(xs0, fn, spg_g!, l = lower, u = upper)
+
     println("elapsed: ", time() - tic)
     return result
 end
@@ -350,3 +356,5 @@ fng          = AA.generate_objective_fn(AA.c_greens_all, AA.c_browns_all, firmgr
 gradf(g, x)  = ForwardDiff.gradient!(g, fng, x, gcfg, Val{false}())
 
 @btime result = AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf)
+#result = AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf)
+#println(result)
