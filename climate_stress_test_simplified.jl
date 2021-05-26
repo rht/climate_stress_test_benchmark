@@ -82,9 +82,17 @@ function do_optimize(fn, xs0, DeltaT)
     # inner_optimizer = Optim.ConjugateGradient  # 2 min 47 s
     # inner_optimizer = Optim.GradientDescent  # 2 min
     println(Symbol(inner_optimizer))
+
     linesearch = LineSearches.HagerZhang(linesearchmax = 20)
-    result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer(linesearch = linesearch)), Optim.Options(g_tol = 1e-5, f_tol = 2.2e-9))
-    #result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer()), autodiff = :forward)
+    #linesearch = LineSearches.BackTracking(iterations = 20)
+    #linesearch = LineSearches.MoreThuente(maxfev = 20)
+
+    # baseline
+    #result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer()))
+
+    # With same params as scipy.optimize except for line search algorithm
+    options = Optim.Options(g_tol = 1e-5, f_tol = 2.2e-9)
+    result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer(linesearch = linesearch)), options)
     println("elapsed: ", time() - tic)
     return result
 end
