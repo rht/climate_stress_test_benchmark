@@ -94,8 +94,7 @@ function do_optimize(fn, xs0, DeltaT, g!)
     #result = Optim.optimize(fn, g!, lower, upper, xs0, Optim.Fminbox(Optim.ConjugateGradient(linesearch = linesearch)), options)
 
     # Using SPGBox
-    spg_g!(x, g) = g!(g, x)
-    result = SPGBox.spgbox!(xs0, fn, spg_g!, l = lower, u = upper)
+    result = SPGBox.spgbox!(fn, g!, xs0, lower = lower, upper = upper)
 
     println("elapsed: ", time() - tic)
     return result
