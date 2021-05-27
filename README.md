@@ -15,3 +15,5 @@ Single function evaluation:
 - Julia: 13.088 μs
 - C++: 75 μs
 - Python: 1360 μs
+
+To compile the C++ version: `g++ -lm -std=c++11 -fcompare-debug-second -g -O0 climate_stress_test_simplified.cpp`
