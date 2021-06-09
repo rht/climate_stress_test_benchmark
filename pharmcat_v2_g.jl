@@ -362,6 +362,9 @@ let
         z .= Optim.gradient!(d, x)
     end
 
+    println("Benchmarking single function execution")
+    @btime $fn(AA.xs0)
+
     println("Benchmarking PharmCat v2 (CG) using grad specified by ForwardDiff")
     @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $gradf, method="CG")
     println(Optim.minimum(AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf, method="CG")))
