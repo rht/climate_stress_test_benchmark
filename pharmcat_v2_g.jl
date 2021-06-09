@@ -73,30 +73,38 @@ const full_length = length(full_Ts)
 const Energy_total_initial = 420.252047319395 * 1e9  # GJ
 const brown_energy_fraction = Ref(0.75)
 
-function do_optimize(fn, xs0, DeltaT, g!)
+function do_optimize(fn, xs0, DeltaT, g!; method = "SPGBox")
     tic = time()
     lower = [0.0 for i in 1:DeltaT]
     upper = [1.0 for i in 1:DeltaT]
 
-    inner_optimizer = Optim.LBFGS  # 5 min
     # inner_optimizer = Optim.ConjugateGradient  # 2 min 47 s
     # inner_optimizer = Optim.GradientDescent  # 2 min
-    println(Symbol(inner_optimizer))
+    #println(Symbol(inner_optimizer))
 
-    linesearch = LineSearches.HagerZhang(linesearchmax = 20)
 
     # LBFGS with same params as scipy.optimize, using autodiff = :forward
-    options = Optim.Options(g_tol = 1e-5, f_tol = 2.2e-9)
     # result = Optim.optimize(fn, lower, upper, xs0, Optim.Fminbox(inner_optimizer(linesearch = linesearch)), options; autodiff = :forward)
     # LBFGS with same params as scipy.optimize, using g!
     #result = Optim.optimize(fn, g!, lower, upper, xs0, Optim.Fminbox(inner_optimizer(linesearch = linesearch)), options)
     # ConjugateGradient with same params as scipy.optimize, using g!
-    #result = Optim.optimize(fn, g!, lower, upper, xs0, Optim.Fminbox(Optim.ConjugateGradient(linesearch = linesearch)), options)
 
     # Using SPGBox
-    result = SPGBox.spgbox!(fn, g!, lower, upper, xs0)
+    if method == "SPGBox"
+        result = SPGBox.spgbox!(fn, g!, lower, upper, xs0)
+    else
+        # inner_optimizer = Optim.LBFGS  # 5 min
+        options = Optim.Options(g_tol = 1e-5, f_tol = 2.2e-9)
+        linesearch = LineSearches.HagerZhang(linesearchmax = 20)
+        if method == "CG"
+            result = Optim.optimize(fn, g!, lower, upper, xs0, Optim.Fminbox(Optim.ConjugateGradient(linesearch = linesearch)), options)
+        else
+            error("Method not supported")
+        end
+    end
 
-    println("elapsed: ", time() - tic)
+    #println("Method: ", method)
+    #println("elapsed: ", time() - tic)
     return result
 end
 
@@ -321,39 +329,101 @@ const c_greens_all = evolve_cg(omega_hat, sigma_omega, sigma_u, cg_initial)
 const c_browns_all = evolve_cb(sigma_cb, cb_initial, kappa, phi_cb)
 
 const xs0 = [min(1, initial_x) for i in 1:DeltaT]
-
-#if abspath(PROGRAM_FILE) == @__FILE__
-#    # The let...end needs to be commented out, otherwise, @btime can't detect
-#    # `fn`.
-#    #let
-#        # We preallocate the firm struct once for all to reduce allocations.
-#        firm = allocate_firm()
-#        fn = generate_objective_fn(c_greens_all, c_browns_all, firm)
-#        #@profilehtml fn(xs0)
-#        #@profile fn(xs0)
-#        #Profile.print(format=:flat, sortedby=:count)
-#        @btime result = do_optimize(fn, xs0, DeltaT)
-#        #result = do_optimize(fn, xs0, DeltaT)
-#        #println(Optim.minimizer(result))
-#    #end
-#end
 end
 
-firm = AA.allocate_firm()
-fn = AA.generate_objective_fn(AA.c_greens_all, AA.c_browns_all, firm)
-
-
-
-using BenchmarkTools
+import LBFGSB
+import Optim
+import PyCall
 using ForwardDiff
+using BenchmarkTools
 
+function generate_fn()
+    firm = AA.allocate_firm()
+    fn = AA.generate_objective_fn(AA.c_greens_all, AA.c_browns_all, firm)
+    return fn
+end
 
-chunk        = ForwardDiff.Chunk{1}()
-gcfg         = ForwardDiff.GradientConfig(fn, AA.xs0, chunk)
-firmgrad     = AA.allocate_firm(t=eltype(gcfg.duals))
-fng          = AA.generate_objective_fn(AA.c_greens_all, AA.c_browns_all, firmgrad)
-gradf(g, x)  = ForwardDiff.gradient!(g, fng, x, gcfg, Val{false}())
+function generate_forwarddiff_grad(fn)
+    chunk        = ForwardDiff.Chunk{1}()
+    gcfg         = ForwardDiff.GradientConfig(fn, AA.xs0, chunk)
+    firmgrad     = AA.allocate_firm(t=eltype(gcfg.duals))
+    fng          = AA.generate_objective_fn(AA.c_greens_all, AA.c_browns_all, firmgrad)
+    gradf(g, x)  = ForwardDiff.gradient!(g, fng, x, gcfg, Val{false}())
+end
 
-@btime result = AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf)
-#result = AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf)
-#println(result)
+# Used to generate finite difference grad
+promote_objtype(x, f) = Optim.OnceDifferentiable(f, x, real(zero(eltype(x))))
+
+let
+    fn = generate_fn()
+    gradf = generate_forwarddiff_grad(fn)
+    d = promote_objtype(AA.xs0, fn)
+    function fd_g!(z, x)
+        z .= Optim.gradient!(d, x)
+    end
+
+    println("Benchmarking PharmCat v2 (CG) using grad specified by ForwardDiff")
+    @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $gradf, method="CG")
+    println(Optim.minimum(AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf, method="CG")))
+
+    println("Benchmarking SPGBox using grad specified by ForwardDiff")
+    @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $gradf, method="SPGBox")
+    println(AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf, method="SPGBox").f)
+
+    #println("Benchmarking PharmCat v2 (CG) using finite difference grad")
+    #@btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $fd_g!, method="CG")
+    #println(Optim.minimum(AA.do_optimize(fn, AA.xs0, AA.DeltaT, fd_g!, method="CG")))
+
+    println("Benchmarking SPGBox using finite difference grad")
+    @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $fd_g!, method="SPGBox")
+    println(AA.do_optimize(fn, AA.xs0, AA.DeltaT, fd_g!, method="SPGBox").f)
+end
+
+let
+    fn = generate_fn()
+    gradf = generate_forwarddiff_grad(fn)
+    nmax = length(AA.xs0)
+    mmax = 10
+    lbfgsb_optimizer = LBFGSB.L_BFGS_B(nmax, mmax)
+
+    bounds = zeros(3, nmax)
+    for i = 1:nmax
+        bounds[1,i] = 2  # represents the type of bounds imposed on the variables:
+                         #  0->unbounded, 1->only lower bound, 2-> both lower and upper bounds, 3->only upper bound
+        bounds[2,i] = 0.0  #  the lower bound on x, of length n.
+        bounds[3,i] = 1.0  #  the upper bound on x, of length n.
+    end
+
+    d = promote_objtype(AA.xs0, fn)
+    function fd_g!(z, x)
+        z .= Optim.gradient!(d, x)
+    end
+
+    ftol = 2.2204460492503131e-09
+    factr = ftol / Base.eps(Float64)
+
+    println("Benchmarking LBFGSB.jl using grad specified by ForwardDiff")
+    @btime $lbfgsb_optimizer($fn, $gradf, AA.xs0, $bounds, m=10, factr=$factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
+    fout, xout = lbfgsb_optimizer(fn, gradf, AA.xs0, bounds, m=10, factr=factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
+    println(fout)
+    println("Benchmarking LBFGSB.jl using finite difference grad")
+    @btime $lbfgsb_optimizer($fn, $fd_g!, AA.xs0, $bounds, m=10, factr=$factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
+    fout, xout = lbfgsb_optimizer(fn, fd_g!, AA.xs0, bounds, m=10, factr=factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
+    println(fout)
+end
+
+let
+    println("Benchmarking scipy.optimize(method='L-BFGS-B') which uses finite difference grad")
+    scipy_optimize = PyCall.pyimport("scipy.optimize")
+    function do_optimize_scipy(fn, xs0, DeltaT)
+        method = "L-BFGS-B"
+        bounds = scipy_optimize.Bounds([0.0 for i = 1:DeltaT], [1.0 for i = 1:DeltaT])
+        result = scipy_optimize.minimize(fn, xs0, bounds=bounds, method=method)
+        return result
+    end
+    fn = generate_fn()
+    @btime $do_optimize_scipy($fn, AA.xs0, AA.DeltaT)
+    result = do_optimize_scipy(fn, AA.xs0, AA.DeltaT)
+    #println(result["fun"], " ", fn(result["x"]), result["x"])
+    println(result["fun"])
+end
