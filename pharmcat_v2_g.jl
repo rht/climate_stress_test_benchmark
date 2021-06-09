@@ -91,7 +91,7 @@ function do_optimize(fn, xs0, DeltaT, g!; method = "SPGBox")
 
     # Using SPGBox
     if method == "SPGBox"
-        result = SPGBox.spgbox!(fn, g!, lower, upper, xs0)
+        result = SPGBox.spgbox!(fn, g!, lower, upper, copy(xs0))
     else
         # inner_optimizer = Optim.LBFGS  # 5 min
         options = Optim.Options(g_tol = 1e-5, f_tol = 2.2e-9)
@@ -365,18 +365,21 @@ let
     println("Benchmarking PharmCat v2 (CG) using grad specified by ForwardDiff")
     @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $gradf, method="CG")
     println(Optim.minimum(AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf, method="CG")))
+    #println(AA.xs0)
 
     println("Benchmarking SPGBox using grad specified by ForwardDiff")
     @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $gradf, method="SPGBox")
     println(AA.do_optimize(fn, AA.xs0, AA.DeltaT, gradf, method="SPGBox").f)
+    #println(AA.xs0)
 
-    #println("Benchmarking PharmCat v2 (CG) using finite difference grad")
-    #@btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $fd_g!, method="CG")
-    #println(Optim.minimum(AA.do_optimize(fn, AA.xs0, AA.DeltaT, fd_g!, method="CG")))
+    println("Benchmarking PharmCat v2 (CG) using finite difference grad")
+    @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $fd_g!, method="CG")
+    println(Optim.minimum(AA.do_optimize(fn, AA.xs0, AA.DeltaT, fd_g!, method="CG")))
 
     println("Benchmarking SPGBox using finite difference grad")
     @btime result = AA.do_optimize($fn, AA.xs0, AA.DeltaT, $fd_g!, method="SPGBox")
     println(AA.do_optimize(fn, AA.xs0, AA.DeltaT, fd_g!, method="SPGBox").f)
+    #println(AA.xs0)
 end
 
 let
@@ -406,10 +409,12 @@ let
     @btime $lbfgsb_optimizer($fn, $gradf, AA.xs0, $bounds, m=10, factr=$factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
     fout, xout = lbfgsb_optimizer(fn, gradf, AA.xs0, bounds, m=10, factr=factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
     println(fout)
+    #println(AA.xs0)
     println("Benchmarking LBFGSB.jl using finite difference grad")
     @btime $lbfgsb_optimizer($fn, $fd_g!, AA.xs0, $bounds, m=10, factr=$factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
     fout, xout = lbfgsb_optimizer(fn, fd_g!, AA.xs0, bounds, m=10, factr=factr, pgtol=1e-5, iprint=-1, maxfun=15000, maxiter=15000)
     println(fout)
+    #println(AA.xs0)
 end
 
 let
@@ -426,4 +431,5 @@ let
     result = do_optimize_scipy(fn, AA.xs0, AA.DeltaT)
     #println(result["fun"], " ", fn(result["x"]), result["x"])
     println(result["fun"])
+    #println(AA.xs0)
 end
